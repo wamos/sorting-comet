@@ -46,6 +46,8 @@ int main(int argc, char* argv[]) {
         );
 
 	json shared_json, host_json;
+	shared_config = "../config/"+shared_config;
+	host_config   = "../config/"+host_config;
 	std::ifstream sharedConfigStream(shared_config.c_str(), std::ios::in | std::ios::binary);
 	std::ifstream hostConfigStream(host_config.c_str(), std::ios::in | std::ios::binary);
 	sharedConfigStream >> shared_json;

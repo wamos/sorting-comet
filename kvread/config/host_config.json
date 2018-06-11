@@ -1,0 +1,18 @@
+{
+  "0": {
+    "input_prefix":"test100_0",
+    "output_prefix":"kv0"
+  },
+  "1": {
+    "input_prefix":"test100_1",
+    "output_prefix":"kv1"
+  },
+  "2":{
+    "input_prefix":"test100_2",
+    "output_prefix":"kv2"
+  },
+  "3":{
+    "input_prefix":"test100",
+    "output_prefix":"kv3"
+  }
+}
