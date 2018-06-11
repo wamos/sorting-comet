@@ -4,10 +4,9 @@
 #include <cstdint>
 #include <chrono>
 
-KVReader::KVReader(std::unique_ptr<KVFileIO> io, std::shared_ptr<ConcurrentQueue> queue, uint32_t num_rec, std::unique_ptr<Socket> sock_ptr, int rcv_or_snd)
+KVReader::KVReader(std::unique_ptr<KVFileIO> io, std::shared_ptr<ConcurrentQueue> queue, std::unique_ptr<Socket> sock_ptr, int rcv_or_snd)
 : kv_io(std::move(io)), 
-  ReadQueue(std::move(queue)),
-  num_record(num_rec), 
+  ReadQueue(std::move(queue)), 
   tcp_socket(std::move(sock_ptr)), 
   node_status(rcv_or_snd), 
   record_size(100){
@@ -29,7 +28,6 @@ KVReader::KVReader(KVReader&& other)
     tcp_socket(nullptr),
     m_ReaderThread(std::move(other).m_ReaderThread),
     record_size(100),
-    num_record(0),
     node_status(0){
 
     _logger = spdlog::get("kvreader_logger");
@@ -45,7 +43,6 @@ KVReader& KVReader::operator= (KVReader&& other){
         m_ReaderThread = std::move(other.m_ReaderThread); // ERROR!!
         tcp_socket = std::move(other.tcp_socket);
         record_size = other.record_size;
-        num_record= other.num_record;
         node_status = other.node_status;
 
         //other.tcp_socket = nullptr;
@@ -53,7 +50,6 @@ KVReader& KVReader::operator= (KVReader&& other){
         //other.kv_io = nullptr;
         //other.m_ReaderThread = nullptr;
         other.record_size = 0;
-        other.num_record = 0;
         other.node_status = -1;
     }
     return *this;  
@@ -96,7 +92,7 @@ void KVReader::receiveKV() {
 }
 
 void KVReader::readingKV() {
-    std::cout << "read kv num_record:" <<  +num_record << "\n";
+    //std::cout << "read kv num_record:" <<  +num_record << "\n";
     int loop_counter = 0;
     struct timespec ts1,ts2, ts3;
     uint64_t read_start, read_end, gateway_end;

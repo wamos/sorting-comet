@@ -15,11 +15,12 @@
 
 class KVFileIO {
 public:
-    KVFileIO(size_t r_size, int input_file_num, int output_file_num)
+    KVFileIO(size_t r_size, int input_file_num, int output_file_num, std::string fpath)
         : record_size(r_size)
         ,record_count(0)
         ,input_file_num(input_file_num)
-        ,output_file_num(output_file_num){
+        ,output_file_num(output_file_num)
+        ,filepath(fpath){
     } 
    
     ~KVFileIO(){

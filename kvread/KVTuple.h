@@ -14,7 +14,7 @@ class KVTuple{
     KVTuple& operator= (const KVTuple& other);
 	KVTuple& operator= (KVTuple&& other);
 
-	void initRecord(int _size);
+	void initRecord(size_t _size);
 	
 	inline char getKey(int index) const{
 		return buffer[index];
@@ -72,7 +72,7 @@ class KVTuple{
 	private:
 	char* buffer;
   	uint64_t tag;
-  	int size;
+  	size_t size;
   	//bool isLast;
   	
   	//int keySize=10;

@@ -15,7 +15,7 @@ KVTuple::KVTuple(){
 }
 
 
-void KVTuple::initRecord(int _size){
+void KVTuple::initRecord(size_t _size){
 	//std::cout << "kvtuple ctor" << "\n";
 	buffer = new char[_size];
 	size=_size;

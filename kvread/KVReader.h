@@ -13,7 +13,7 @@
 
 class KVReader {
 public:
-    KVReader(std::unique_ptr<KVFileIO> io, std::shared_ptr<ConcurrentQueue> queue, uint32_t num, std::unique_ptr<Socket> sock_ptr, int rcv_or_snd);
+    KVReader(std::unique_ptr<KVFileIO> io, std::shared_ptr<ConcurrentQueue> queue, std::unique_ptr<Socket> sock_ptr, int rcv_or_snd);
     ~KVReader();
     KVReader(KVReader&& other);
     KVReader& operator= (KVReader&& other);
@@ -40,13 +40,15 @@ private:
     std::unique_ptr<KVFileIO> kv_io;
     std::shared_ptr<ConcurrentQueue> ReadQueue;
 
-    uint32_t num_record;
+    
+    size_t record_size=100;
+    uint32_t key_size=10;
+    uint32_t value_size=90;
+
+    //uint32_t num_record;
     uint32_t num_iter;
     uint32_t num_host;
     int64_t total_expected_bytes;
-    int record_size=100;
-    uint32_t key_size=10;
-    uint32_t value_size=90;
     int node_status; // 0 = uninitialized, 1=read, 2=recv
     std::thread m_ReaderThread;
     std::shared_ptr<spdlog::logger> _logger;
