@@ -10,7 +10,11 @@
 //https://docs.microsoft.com/en-us/cpp/cpp/move-constructors-and-move-assignment-operators-cpp
 
 
-KVTuple::KVTuple(){	
+KVTuple::KVTuple()
+: buffer(nullptr)  
+   , tag(0)
+   , size(0)
+   , isLast(false){	
 	//std::cout << "KV default constructor" <<"\n";
 }
 
@@ -19,13 +23,15 @@ void KVTuple::initRecord(size_t _size){
 	//std::cout << "kvtuple ctor" << "\n";
 	buffer = new char[_size];
 	size=_size;
+	isLast=false;
 	//std::cout << "init record size:"<< size <<"\n";
 }
 
 // Copy constructor
 KVTuple::KVTuple(const KVTuple& other)
 	: tag(other.tag)
-	, size(other.size){
+	, size(other.size)
+	, isLast(other.isLast){
 	//std::cout << "KV copy constructor" <<"\n";
 	//tag=other.tag;
 	//size=other.size;
@@ -56,6 +62,7 @@ KVTuple& KVTuple::operator= (const KVTuple& other){
 		delete[] buffer;
 		size=other.size;
 		tag=other.tag;
+		isLast=other.isLast;
 		buffer = new char[size];
 		std::copy(other.buffer, other.buffer + size, buffer); 
 		//std::memcpy(buffer, other.buffer, size);
@@ -67,7 +74,8 @@ KVTuple& KVTuple::operator= (const KVTuple& other){
 KVTuple::KVTuple(KVTuple&& other)
    : buffer(nullptr)  
    , tag(0)
-   , size(0){
+   , size(0)
+   , isLast(false){
    //std::cout << "kvtuple move ctor" << "\n";
    *this = std::move(other);
 }
@@ -79,10 +87,12 @@ KVTuple& KVTuple::operator= (KVTuple&& other){
 		buffer= other.buffer;
 		tag=other.tag;
 		size=other.size;
+		isLast=other.isLast;
 		//clear the pointer and initailized all values
 		other.buffer = nullptr;
 		other.tag = 0;
 		other.size = 0;
+		other.isLast=false;
 	}
 	return *this;
 }

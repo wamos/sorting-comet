@@ -40,13 +40,13 @@ class KVTuple{
 		buffer=buf;
 	}
 
-	/*inline void markLast(){
+	inline void markLast(){
 		isLast=true;
 	}
 
 	inline bool checkLast() const{
 		return isLast;
-	}*/
+	}
 
 	inline void setTag(int t){
 		tag=t;
@@ -71,9 +71,9 @@ class KVTuple{
   	//[ uint64_t keySize, uint32_t valueSize, uint8_t* key, uint8_t* value ]
 	private:
 	char* buffer;
-  	uint64_t tag;
-  	size_t size;
-  	//bool isLast;
+  	uint64_t tag;  // 8 byetes
+  	size_t size;   // 4 bytes
+  	bool isLast; // 1 byte
   	
   	//int keySize=10;
 };

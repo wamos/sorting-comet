@@ -103,12 +103,16 @@ void KVReader::readingKV() {
     for(int file_index = 0; file_index< file_num; file_index++){
         uint32_t iters =  (uint32_t) kv_io->genReadIters(file_index);
         std::cout << "read iters:" << iters << "," << std::this_thread::get_id() << "\n";
-        for(uint32_t i = 0; i< iters; i++){
+        for(uint32_t i = 0; i < iters; i++){
             read_start = KVReader::getNanoSecond(ts1);
             /*-----start---*/
             KVTuple kvr;
             kvr.initRecord(record_size);
             kv_io->readTuple(kvr,file_index);
+            if(i == iters-1 && file_index == file_num-1){ // the last one!
+                kvr.markLast();
+                std::cout << "read markLast:" <<  loop_counter << "\n";
+            }
             /*-----end-----*/
             read_end = KVReader::getNanoSecond(ts2);
             _logger->info("read_time {0:d}", read_end-read_start);
@@ -116,7 +120,8 @@ void KVReader::readingKV() {
             loop_counter++;
             //queue_end = KVReader::getNanoSecond(ts3);
             //_logger->info("gateway_kvr_time {0:d}", queue_end-read_end);    
-        }       
+        }
+
     }
     //_logger->info("read loop ends");
     std::cout << "read loop counter:" <<  loop_counter << "\n";

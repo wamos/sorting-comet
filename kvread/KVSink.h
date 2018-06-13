@@ -9,34 +9,18 @@
 
 class KVSink {
 public:
-	KVSink(std::shared_ptr<ConcurrentQueue> cq)
-	:Queue(cq){};
-
-	~KVSink() {
-		SinkThread.join();
-		std::cout<< "Sink Thread join" <<"\n";
-		//_logger->info("kv read thread joins");
-	}
-
-	void startSink(){
-		std::cout<< "Sink Thread start" <<"\n";
-		 SinkThread = std::thread(&KVSink::sinkKV, this);
-	}
-
-	void threadJoin(){
-		if(SinkThread.joinable())
-			SinkThread.join();
-	}
+	KVSink(std::shared_ptr<ConcurrentQueue> cq, int connected_thread_num);
+	~KVSink();
+	//TODO: move assign operator and move constructor
+	// Copy assignment and copy constructor would be deleted
+	void startSink();
+	void threadJoin();
 
 private:
-	void sinkKV(){
-		auto qptr= Queue.get();
-		while(!qptr->isEmpty()){   	
-			qptr->pop();
-		}
-	}
+	void sinkKV();
 	std::shared_ptr<ConcurrentQueue> Queue;
 	std::thread SinkThread;
+	int num_thread;
 };
 
 #endif

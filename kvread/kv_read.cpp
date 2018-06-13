@@ -20,10 +20,8 @@ using json = nlohmann::json;
 
 int main(int argc, char* argv[]) {
 
-	//std::string inputFilePrefix[4] = {"test0_100mb", "test1_100mb", "test2_100mb", "test3_100mb"};
 	//std::string inputFilePrefix[4] = {"test100", "test100_0", "test100_1", "test100_2"};
 	//std::string inputFilePrefix[4] = {"100mb", "100mb_0", "100mb_1", "100mb_2"};
-	//std::string outputFilePrefix("kv");
 	size_t record_size= 0;
 	int output_files_per_thread=0;
 	int input_files_per_thread=0;
@@ -94,7 +92,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	std::cout << "host setting:"<< "\n";
-	std::vector<std::tuple<std::string, std::string>> filename_prefix_list;
+	std::vector<std::string> input_prefix_list;
+	std::vector<std::string> output_prefix_list;
 	for (json::iterator it = host_json.begin(); it != host_json.end(); ++it) {
 		json json_obj = *it;
 		std::string input_prefix;
@@ -103,17 +102,18 @@ int main(int argc, char* argv[]) {
                 //std::cout << itr.key()<<":"<< itr.value()<< "\n";
                 if(itr.key() == "input_prefix"){
                     input_prefix = itr.value();
+                    input_prefix_list.push_back(input_prefix);
+                    std::cout << input_prefix<<"\n";
                 }
                 else if(itr.key() == "output_prefix"){
                     output_prefix = itr.value();
+                    output_prefix_list.push_back(output_prefix);
+                    std::cout << output_prefix<<"\n";
                 }
                 else{
 					std::cerr << "error parsing json" << "\n";
 				}
 		}
-		auto tuple = std::make_tuple(input_prefix,output_prefix);
-		std::cout << input_prefix<<":"<< output_prefix<< "\n";
-		filename_prefix_list.push_back(tuple);
 	}
 
 
@@ -154,19 +154,39 @@ int main(int argc, char* argv[]) {
 		std::cout << "\n";
 		std::unique_ptr<Socket> r_sock (nullptr);
     	std::cout << "reader_" <<i<<":"<<"\n";
-		std::unique_ptr<KVFileIO> file_io (new KVFileIO(record_size, input_files_per_thread, output_files_per_thread, filepath));
-		auto prefix_tuple = filename_prefix_list[i];
-		auto input_prefix = std::get<0>(prefix_tuple);
-		file_io->openInputFiles(input_prefix);
+
+		std::unique_ptr<KVFileIO> file_io (new KVFileIO(record_size, filepath));
+		file_io->openInputFiles(input_prefix_list[i], input_files_per_thread);
+
 		KVReader reader(std::move(file_io), KVQueue, std::move(r_sock), node_status);
 		std::cout << "reader push_back\n";
 		reader_list.push_back(std::move(reader));
 	}
-	for(int i=0;i <4;i++){
+	for(int i=0;i < num_read_thread;i++){
 		reader_list[i].submitKVRead();
 	}
 
-	KVSink sinker(KVQueue);
+	/*uint32_t loop_counter=0;
+	std::cout << "read loop counter:" <<  +loop_counter << "\n"; 
+	for(int i=0;i < num_read_thread ;i++){
+		std::unique_ptr<KVFileIO> file_io (new KVFileIO(record_size, filepath));	
+		file_io->openInputFiles(input_prefix_list[i], input_files_per_thread);
+		int file_num = file_io->getInputFileNum();
+    	for(int file_index = 0; file_index< file_num; file_index++){
+        	uint32_t iters =  (uint32_t) file_io->genReadIters(file_index);
+        	std::cout << "read iters:" << iters << "," << std::this_thread::get_id() << "\n";
+        	for(uint32_t j = 0; i< iters; j++){
+        		std::cout << loop_counter << "\n";       
+            	KVTuple kvr;
+            	kvr.initRecord(record_size);
+            	file_io->readTuple(kvr,file_index);
+            	loop_counter++;
+        	}
+        	std::cout << "read loop counter:" <<  +loop_counter << "\n";       
+    	}
+    }*/	
+
+	KVSink sinker(KVQueue, num_read_thread);
 	sinker.startSink();
 
 	/*console->info("spdlog console logger ends");*/

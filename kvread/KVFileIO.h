@@ -15,25 +15,23 @@
 
 class KVFileIO {
 public:
-    KVFileIO(size_t r_size, int input_file_num, int output_file_num, std::string fpath)
+    KVFileIO(size_t r_size, std::string fpath)
         : record_size(r_size)
         ,record_count(0)
-        ,input_file_num(input_file_num)
-        ,output_file_num(output_file_num)
         ,filepath(fpath){
     } 
    
     ~KVFileIO(){
         std::cout << "kvio dtor" << "\n";
-        if(input_file_num > 0){
-            for(int i=0; i < input_file_num; i++){
+        if(inFileList.size() > 0){
+            for(int i=0; i < inFileList.size(); i++){
                 std::fclose(inFileList[i]);
                 inFileList[i] = nullptr;
             }
             inFileList.clear();
         }   
-        if(output_file_num > 0){
-            for(int i=0; i < output_file_num; i++){
+        if(outFileList.size() > 0){
+            for(int i=0; i < outFileList.size(); i++){
                 std::fclose(outFileList[i]);
                 outFileList[i] = nullptr;
             }
@@ -82,7 +80,8 @@ public:
     KVFileIO(KVFileIO& other)=delete;
     KVFileIO& operator=(const KVFileIO& other)=delete;
 
-    void openInputFiles(std::string input_prefix){
+    void openInputFiles(std::string input_prefix, int file_num){
+        input_file_num=file_num;
         for(int i=0; i < input_file_num; i++){
             std::string FileName(filepath + input_prefix + "_" + std::to_string(i)+ inputExtension);
             std::cout  << FileName << "\n";
@@ -93,7 +92,8 @@ public:
         }
     }
 
-    void openOutputFiles(std::string output_prefix){
+    void openOutputFiles(std::string output_prefix, int file_num){
+        output_file_num=file_num;
         for(int i=0; i < output_file_num; i++){
             std::string FileName(filepath + output_prefix + "_" + std::to_string(i)+ outputExtension);
             const char* filestr=FileName.c_str();

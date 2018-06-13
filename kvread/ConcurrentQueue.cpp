@@ -66,6 +66,8 @@ void ConcurrentQueue::pop(KVTuple& item){
 	cond_.notify_one();
 }
 
+//condtion variable wait for
+
 void ConcurrentQueue::push(const KVTuple& item){
 	std::unique_lock<std::mutex> locker(mutex_);
 	cond_.wait(locker, [this](){return queue_.size() < queue_size;});
