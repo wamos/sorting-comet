@@ -46,7 +46,7 @@ public:
 
     KVFileIO& operator= (KVFileIO&& other){
         std::cout << "kvio move assign" << "\n";
-        if(this!=&other){ // prevent self-move
+        if(this!=&other){ // prevent self-move            
             //Move it move it
             if(input_file_num > 0){
                 inFileList  = std::move(other.inFileList);
@@ -56,7 +56,7 @@ public:
                 record_count= other.record_count;
                 //clean the shit
                 for(int i=0; i < input_file_num; i++){
-                    inFileList[i] = nullptr;
+                    other.inFileList[i] = nullptr;
                 }
                 other.inFileList.clear();
                 other.inputFilenames.clear();
@@ -68,7 +68,7 @@ public:
                 output_file_num = other.output_file_num;
                 //clean the shit
                 for(int i=0; i < output_file_num; i++){
-                    outFileList[i] = nullptr;
+                    other.outFileList[i] = nullptr;
                 }
                 other.outFileList.clear();
             }
@@ -157,6 +157,7 @@ public:
     }
 
     size_t genReadIters(int index){
+        //std::cout <<"filename:"<< inputFilenames[index] << "\n";
         struct stat stat_buf;
         int rc = stat(inputFilenames[index].c_str(), &stat_buf);
         if(rc == 0){            

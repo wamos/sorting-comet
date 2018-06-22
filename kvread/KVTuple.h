@@ -44,6 +44,10 @@ class KVTuple{
 		isLast=true;
 	}
 
+	inline void unmarkLast(){
+		isLast=false;
+	}
+
 	inline bool checkLast() const{
 		return isLast;
 	}

@@ -9,17 +9,20 @@
 
 class KVSink {
 public:
-	KVSink(std::shared_ptr<ConcurrentQueue> cq, int connected_thread_num);
+	KVSink(std::shared_ptr<ConcurrentQueue> cq, int connected_thread_num, int id);
 	~KVSink();
 	//TODO: move assign operator and move constructor
 	// Copy assignment and copy constructor would be deleted
 	void startSink();
+	void startMultiSink();
 	void threadJoin();
 
 private:
 	void sinkKV();
+	void multiSinks();
 	std::shared_ptr<ConcurrentQueue> Queue;
 	std::thread SinkThread;
+	int sink_id;
 	int num_thread;
 };
 

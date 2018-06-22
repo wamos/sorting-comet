@@ -2,28 +2,32 @@
 #include <iostream>
 #include <memory>
 
-KVWriter::KVWriter(KVFileIO& io, std::shared_ptr<ConcurrentQueue> queue, int connected_thread_num, std::unique_ptr<Socket> sock_ptr, int rcv_or_snd)
-        : kv_io(io), WriteQueue(queue), tcp_socket(std::move(sock_ptr)), node_status(rcv_or_snd), num_thread(connected_thread_num){
+KVWriter::KVWriter(std::unique_ptr<KVFileIO> io, std::shared_ptr<ConcurrentQueue> queue, std::unique_ptr<Socket> sock_ptr, int rcv_or_snd)
+    : kv_io(std::move(io)), 
+    WriteQueue(std::move(queue)), 
+    tcp_socket(std::move(sock_ptr)), 
+    node_status(rcv_or_snd),
+    record_size(100){
     _logger = spdlog::get("kvwriter_logger");
 }
 
 KVWriter::~KVWriter() {
-	//if(m_WriterThread.joinable())
 	//std::cout << "kv w-queue empty? " << WriteQueue.empty() << "\n";
 	//std::cout << "kv w-queue size " << GuideQueue.size() << "\n";
-    m_WriterThread.join();
+    if(m_WriterThread.joinable())
+        m_WriterThread.join();
     std::cout<< "WriterThread join" << "\n";
 	//_logger->info("writer thread joins");
 }
-KVWriter::KVWriter(KVReader&& other)
+
+KVWriter::KVWriter(KVWriter&& other)
     :WriteQueue(nullptr),
-    //GuideQueue(nullptr),
     kv_io(nullptr),
     tcp_socket(nullptr),
     m_WriterThread(std::move(other).m_WriterThread),
     record_size(100),
-    node_status(0){
-
+    node_status(0)
+{
     _logger = spdlog::get("kvwriter_logger");
     //std::cout << "kvwrite move ctor" << "\n";
     *this = std::move(other);
@@ -55,12 +59,12 @@ KVWriter& KVWriter::operator= (KVWriter&& other){
 void KVWriter::startWriterThread(){
         if(node_status == 1){
             //std::cout<< "sendLoop" << "\n";
-            m_WriterThread= std::thread(&KVWriter::sendingKV, this);
+            std::thread(&KVWriter::sendingKV, this).swap(m_WriterThread);
             //_logger->info("send thread starts");
         }
         else if(node_status == 2){
             //std::cout<< "writingLoop" << "\n";
-            m_WriterThread= std::thread(&KVWriter::writingKV, this);
+            std::thread(&KVWriter::writingKV, this).swap(m_WriterThread);
             //_logger->info("write thread starts");
         }
         else{
@@ -81,43 +85,25 @@ void KVWriter::setKeyIndex(uint32_t index){
 	 key_index = index;
 }
 
-/*void AsyncKVWriter::setNetworkConfig(std::string ip, std::string port){
+/*void KVWriter::setNetworkConfig(std::string ip, std::string port){
 	server_IP=ip;
 	server_port=port;
 }*/
-void KVWriter::writingKV_rwtest() {
-    //struct timespec ts1,ts2, ts3;
-    //uint64_t write_start, write_end, queue_end;
-    /*int file_num = kv_io->getOutputFileNum();
-    for(int file_index = 0; file_index< file_num; file_index++){
-        uint32_t iters =  (uint32_t) kv_io->genReadIters(file_index);
-        std::cout << "read iters:" << iters << "\n";
-        for(uint32_t i = 0; i< iters; i++){
-            wrtie_start = KVWriter::getNanoSecond(ts1);
-            KVTuple kvr;
-            auto wqueue = WriteQueue.get();
-            wqueue->pop(kvr);
-            kv_io->writeTuple(kvr,file_index);
-            write_end = KVWriter::getNanoSecond(ts2);
-            _logger->info("write_time {0:d}", write_end-write_start);
-            loop_counter++;
-            //queue_end = KVWriter::getNanoSecond(ts3);
-            //_logger->info("gateway_kvr_time {0:d}", queue_end-write_end);    
-        }       
-    }*/
-}
 
 void KVWriter::writingKV() {
     KVTuple kvr;
     int isLastCounter = 0;
     uint32_t loop_counter=0;
     auto wqueue = WriteQueue.get();
-    while(isLastCounter < num_thread){      
+    while(true){    
         wqueue->pop(kvr);
-        kv_io->writeTuple(kvr,key_index);
         if(kvr.checkLast()){
-            std::cout << "kvr tag" << kvr.getTag() << "\n";
-            isLastCounter++;
+            // if kvr directly comes from queue then //kv_io->writeTuple(kvr,key_index);
+            // else don't read it. i.e. Drop the last one kvr if it comes from Guiders
+            break;
+        }
+        else{
+            kv_io->writeTuple(kvr,key_index);
         }
         loop_counter++;
         //std::cout << "loop counter:" <<  +loop_counter << "\n";

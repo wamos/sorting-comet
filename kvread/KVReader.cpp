@@ -3,6 +3,9 @@
 #include <memory>
 #include <cstdint>
 #include <chrono>
+#include <sys/syscall.h>
+#include <cstdint>
+#define gettid_syscall() syscall(__NR_gettid)
 
 KVReader::KVReader(std::unique_ptr<KVFileIO> io, std::shared_ptr<ConcurrentQueue> queue, std::unique_ptr<Socket> sock_ptr, int rcv_or_snd)
 : kv_io(std::move(io)), 
@@ -18,7 +21,7 @@ KVReader::~KVReader() {
     std::cout << "kvread dtor" << "\n";
     if(m_ReaderThread.joinable())
         m_ReaderThread.join();
-    std::cout<< "ReaderThread join:" <<"\n";
+    std::cout<< "ReaderThread " << (int32_t) gettid_syscall() << " join:" <<"\n";
     //_logger->info("kv read thread joins");
 }
 
@@ -96,13 +99,15 @@ void KVReader::readingKV() {
     int loop_counter = 0;
     struct timespec ts1,ts2, ts3;
     uint64_t read_start, read_end, gateway_end;
-    std::cout << "read thread id:" << std::this_thread::get_id() << "\n";
+    int32_t tid =(int32_t) gettid_syscall();
+    std::cout << "read_tid:" << tid << "\n";
+    //std::cout << "read thread id:" << std::this_thread::get_id() << "\n";
     //_logger->info("read kvr starts");
     auto q_ptr=ReadQueue.get();
     int file_num = kv_io->getInputFileNum();
     for(int file_index = 0; file_index< file_num; file_index++){
         uint32_t iters =  (uint32_t) kv_io->genReadIters(file_index);
-        std::cout << "read iters:" << iters << "," << std::this_thread::get_id() << "\n";
+        std::cout << "read_iters:" << iters << ", tid" << tid << "\n";
         for(uint32_t i = 0; i < iters; i++){
             read_start = KVReader::getNanoSecond(ts1);
             /*-----start---*/
@@ -112,6 +117,7 @@ void KVReader::readingKV() {
             if(i == iters-1 && file_index == file_num-1){ // the last one!
                 kvr.markLast();
                 std::cout << "read markLast:" <<  loop_counter << "\n";
+                _logger->info("read_markLast");
             }
             /*-----end-----*/
             read_end = KVReader::getNanoSecond(ts2);
@@ -125,7 +131,7 @@ void KVReader::readingKV() {
     }
     //_logger->info("read loop ends");
     std::cout << "read loop counter:" <<  loop_counter << "\n";
-    _logger->info("read ends");
+    _logger->info("read_ends");
 } 
 
 //std::this_thread::sleep_for(std::chrono::milliseconds(5));
