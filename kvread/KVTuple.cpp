@@ -1,98 +1,90 @@
-//#include <stdint.h>
-//#include <stdlib.h>
-//#include <unistd.h>
-#include <iostream>
-#include <cstdint>
-//#include <cstring>
 #include <algorithm>
 #include "KVTuple.h"
+
 // Ref to get all c'tors right
 //https://docs.microsoft.com/en-us/cpp/cpp/move-constructors-and-move-assignment-operators-cpp
-
-
 KVTuple::KVTuple()
-: buffer(nullptr)  
-   , tag(0)
-   , size(0)
-   , isLast(false){	
-	//std::cout << "KV default constructor" <<"\n";
+: header(nullptr),
+  size(0){
+	//std::cout << "kvtuple empty ctor" <<"\n";
 }
 
+KVTuple::KVTuple(uint32_t header_size, uint32_t key_size, uint32_t val_size)
+:size(header_size + key_size + val_size){
+	//std::cout << "kvtuple param ctor" << "\n";
+	header = new char[size];
+	//buffer = header + header_size;
+	uint16_t isLast=0; // since optional is not using now, we just copt uint16_t instead of uint8_t
+    std::copy((char*)&isLast,(char*)&isLast + sizeof(uint16_t), header);
+    std::copy((char*)&key_size,(char*)&key_size + sizeof(uint32_t), header+2);
+    std::copy((char*)&val_size,(char*)&val_size + sizeof(uint32_t), header+6);
 
-void KVTuple::initRecord(size_t _size){
-	//std::cout << "kvtuple ctor" << "\n";
-	buffer = new char[_size];
-	size=_size;
-	isLast=false;
-	//std::cout << "init record size:"<< size <<"\n";
+}
+
+KVTuple::KVTuple(uint32_t header_size, uint32_t key_size, uint32_t val_size, char* mem)
+:size(header_size + key_size + val_size){
+	//std::cout << "kvtuple pre-alloc ctor" << "\n";
+	header = mem;
+	uint16_t isLast=0; // since optional is not using now, we just copt uint16_t instead of uint8_t
+    std::copy((char*)&isLast,(char*)&isLast + sizeof(uint16_t), header);
+    std::copy((char*)&key_size,(char*)&key_size + sizeof(uint32_t), header+2);
+    std::copy((char*)&val_size,(char*)&val_size + sizeof(uint32_t), header+6);
+
 }
 
 // Copy constructor
 KVTuple::KVTuple(const KVTuple& other)
-	: tag(other.tag)
-	, size(other.size)
-	, isLast(other.isLast){
-	//std::cout << "KV copy constructor" <<"\n";
-	//tag=other.tag;
-	//size=other.size;
-	//std::cout << "copy record size:"<< size <<"\n";
+	: size(other.size){
+	//std::cout << "kvtuple copy ctor" << "\n";
 	//maybe we should avoid C style memcpy in C++11 code
 	//std::memcpy(Buffer, other.Buffer, size);
-	buffer = new char[size];
-	//std::cout << "kvtuple copy ctor" << "\n";
-	std::copy(other.buffer, other.buffer+ size, buffer);
+	header = new char[size];
+	//buffer = header + 10; // hard-coded size 10
+	std::copy(other.header, other.header+ size, header);
 }
 
 KVTuple::~KVTuple(){
-	//std::cout << "KV destructor tag:"; 
-	//std::cout << tag <<"\n";
-	//std::cout << "kvtuple dtor" << "\n";
-	if (buffer!= nullptr){
-		delete [] buffer;
+	//std::cout << "kv dtor" << "\n";
+	//for mempool 
+	//header = nullptr; 
+	//for regular dtor
+	if (header!= nullptr){ 
+		//std::cout << "mem del" << "\n";
+		delete [] header;
 	}
 }
 
 // Copy assignment operator
 KVTuple& KVTuple::operator= (const KVTuple& other){
-	//std::cout << "KV copy assignment" <<"\n";
-	//std::cout << "other.tag:" << other.getTag() <<"\n";
-	//std::cout << "other.size:" <<  other.getSize() <<"\n";
 	//std::cout << "kvtuple copy assign" << "\n";
 	if (this != &other){
-		delete[] buffer;
-		size=other.size;
-		tag=other.tag;
-		isLast=other.isLast;
-		buffer = new char[size];
-		std::copy(other.buffer, other.buffer + size, buffer); 
+		delete[] header;
+		size = other.size;
+		header = new char[size]; 
+		//buffer = header + 10;
+		std::copy(other.header, other.header + size, header); 
 		//std::memcpy(buffer, other.buffer, size);
 	}
 	return *this;
 }
 
 // move constructor
-KVTuple::KVTuple(KVTuple&& other)
-   : buffer(nullptr)  
-   , tag(0)
-   , size(0)
-   , isLast(false){
+KVTuple::KVTuple(KVTuple&& other) noexcept
+   : header(nullptr),
+   size(0){
    //std::cout << "kvtuple move ctor" << "\n";
    *this = std::move(other);
 }
 
 // move assignment
-KVTuple& KVTuple::operator= (KVTuple&& other){
+KVTuple& KVTuple::operator= (KVTuple&& other) noexcept{
 	//std::cout << "kvtuple move assign" << "\n";
 	if(this!=&other){ // prevent self-move
-		buffer= other.buffer;
-		tag=other.tag;
+		header= other.header;
 		size=other.size;
-		isLast=other.isLast;
 		//clear the pointer and initailized all values
-		other.buffer = nullptr;
-		other.tag = 0;
+		other.header = nullptr;
 		other.size = 0;
-		other.isLast=false;
 	}
 	return *this;
 }

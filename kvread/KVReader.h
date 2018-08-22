@@ -10,10 +10,12 @@
 #include "KVTuple.h"
 #include "ConcurrentQueue.h"
 #include "spdlog/spdlog.h"
+#include "StageTracker.h"
 
 class KVReader {
 public:
-    KVReader(std::unique_ptr<KVFileIO> io, std::shared_ptr<ConcurrentQueue> queue, std::unique_ptr<Socket> sock_ptr, int rcv_or_snd);
+    KVReader(int rid, std::unique_ptr<KVFileIO> io, std::shared_ptr<ConcurrentQueue> queue, std::shared_ptr<StageTracker> tracker ,std::unique_ptr<Socket> sock_ptr, int rcv_or_snd);
+    //KVReader(std::unique_ptr<KVFileIO> io, std::shared_ptr<ConcurrentQueue> queue, std::unique_ptr<Socket> sock_ptr, int rcv_or_snd);
     ~KVReader();
     KVReader(KVReader&& other);
     KVReader& operator= (KVReader&& other);
@@ -31,16 +33,15 @@ public:
     }
 
 private:
-
+    void bulkReadingKV();
     void readingKV();
     void receiveKV();
 
-    //KVFileIO kv_io;
-    //ConcurrentQueue& ReadQueue;
     std::unique_ptr<KVFileIO> kv_io;
     std::shared_ptr<ConcurrentQueue> ReadQueue;
+    std::shared_ptr<StageTracker> read_tracker;
 
-    
+    int rid;
     size_t record_size=100;
     uint32_t key_size=10;
     uint32_t value_size=90;

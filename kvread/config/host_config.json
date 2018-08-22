@@ -1,18 +1,26 @@
 {
-  "0": {
-    "input_prefix":"test100_0",
+  "r0": {
+    "input_prefix":"100mb_0"
+  },
+  "r1": {
+    "input_prefix":"100mb_1"
+  },
+  "r2":{
+    "input_prefix":"100mb_2"
+  },
+  "r3":{
+    "input_prefix":"100mb"
+  },
+  "w0":{
     "output_prefix":"kv0"
   },
-  "1": {
-    "input_prefix":"test100_1",
+  "w1":{
     "output_prefix":"kv1"
   },
-  "2":{
-    "input_prefix":"test100_2",
+  "w2":{
     "output_prefix":"kv2"
   },
-  "3":{
-    "input_prefix":"test100",
+  "w3":{
     "output_prefix":"kv3"
   }
 }

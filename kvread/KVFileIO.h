@@ -4,166 +4,94 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <sys/stat.h>
+#include <errno.h>
 
-#include <iostream>
-//#include <fstream>
+//This one is for fread/fopen/fwrite 
 #include <cstdio>
+#include <cstring>
+#include <iostream>
+#include <unistd.h>
+#include <fcntl.h>
 #include <string>
 #include <memory>
+#include <vector>
 #include <utility> 
 #include "KVTuple.h"
 
 class KVFileIO {
 public:
-    KVFileIO(size_t r_size, std::string fpath)
-        : record_size(r_size)
-        ,record_count(0)
-        ,filepath(fpath){
-    } 
-   
-    ~KVFileIO(){
-        std::cout << "kvio dtor" << "\n";
-        if(inFileList.size() > 0){
-            for(int i=0; i < inFileList.size(); i++){
-                std::fclose(inFileList[i]);
-                inFileList[i] = nullptr;
-            }
-            inFileList.clear();
-        }   
-        if(outFileList.size() > 0){
-            for(int i=0; i < outFileList.size(); i++){
-                std::fclose(outFileList[i]);
-                outFileList[i] = nullptr;
-            }
-            outFileList.clear();
-        }
-    }  
-
-    KVFileIO(KVFileIO&& other){
-        std::cout << "kvio move ctor" << "\n";
-        *this = std::move(other);
-    }
-
-    KVFileIO& operator= (KVFileIO&& other){
-        std::cout << "kvio move assign" << "\n";
-        if(this!=&other){ // prevent self-move            
-            //Move it move it
-            if(input_file_num > 0){
-                inFileList  = std::move(other.inFileList);
-                inputPrefix = other.inputPrefix;
-                inputFilenames = other.inputFilenames;
-                input_file_num = other.input_file_num;
-                record_count= other.record_count;
-                //clean the shit
-                for(int i=0; i < input_file_num; i++){
-                    other.inFileList[i] = nullptr;
-                }
-                other.inFileList.clear();
-                other.inputFilenames.clear();
-            }
-
-            if(output_file_num > 0){
-                outFileList = std::move(other.outFileList);
-                outputPrefix   = other.outputPrefix;
-                output_file_num = other.output_file_num;
-                //clean the shit
-                for(int i=0; i < output_file_num; i++){
-                    other.outFileList[i] = nullptr;
-                }
-                other.outFileList.clear();
-            }
-
-        }
-        return *this;
-    }
-
+    KVFileIO(uint32_t h_size, uint32_t k_size, uint32_t v_size, uint32_t b_size, std::string fpath);   
+    ~KVFileIO();
+    KVFileIO(KVFileIO&& other);
+    KVFileIO& operator= (KVFileIO&& other);
     KVFileIO(KVFileIO& other)=delete;
     KVFileIO& operator=(const KVFileIO& other)=delete;
 
-    void openInputFiles(std::string input_prefix, int file_num){
-        input_file_num=file_num;
-        for(int i=0; i < input_file_num; i++){
-            std::string FileName(filepath + input_prefix + "_" + std::to_string(i)+ inputExtension);
-            std::cout  << FileName << "\n";
-            inputFilenames.push_back(FileName);
-            const char* filestr=FileName.c_str();
-            std::FILE* fp=std::fopen(filestr,"rb");
-            inFileList.push_back(fp);
-        }
+    void openInputFiles(std::string input_prefix, int file_num);
+    void openOutputFiles(std::string output_prefix, int file_num);
+    std::vector<KVTuple> bulkRead(int index);
+    bool bulkWrite(std::vector<KVTuple> kv_list, int index);
+    //int64_t bulkSend(std::vector<KVTuple> kv_list, int index);
+    //std::vector<KVTuple> bulkReceive(int index);
+
+    void readTuple(KVTuple& kvr, int index);
+    void writeTuple(const KVTuple& kvr, int index);
+
+    void closeInputFiles();
+    void closeOutputFiles();
+    int getInputFileNum() const;
+    int getOutputFileNum() const;
+    size_t getBulkSize() const;
+    uint32_t getKeySize() const;
+    uint32_t getValueSize() const;
+    uint32_t getHeaderSize() const;
+    size_t genReadIters(int index);
+    inline char* getFileIOBuffer(){
+        return fileio_buffer;
     }
 
-    void openOutputFiles(std::string output_prefix, int file_num){
-        output_file_num=file_num;
-        for(int i=0; i < output_file_num; i++){
-            std::string FileName(filepath + output_prefix + "_" + std::to_string(i)+ outputExtension);
-            const char* filestr=FileName.c_str();
-            std::FILE* fp=std::fopen(filestr,"wb");
-            outFileList.push_back(fp);
-        }
+
+private:
+    inline uint64_t getNanoSecond(struct timespec tp){
+        clock_gettime(CLOCK_MONOTONIC, &tp);
+        return (1000000000) * (uint64_t)tp.tv_sec + tp.tv_nsec;
     }
 
-    void readTuple(KVTuple& kvr, int index ) {
-        char* bufptr = kvr.getBuffer();
-        std::FILE* fp = inFileList[index];
-        std::fread(bufptr, sizeof(char), record_size, fp);
-        kvr.setTag(record_count);
-        //std::cout<< "r:" << kvr.getTag() <<"\n";
-        record_count++;
-    }
+    /*
+    A successful return from write() does not make any guarantee that data has been committed to disk. 
+    In fact, on some buggy implementations, it does not even guarantee that space has successfully been reserved for the data. 
+    The only way to be sure is to call fsync(2) after you are done writing all your data.
+    */
+    //TODO: fsync of flush
+    inline ssize_t writeFile(int fd, char* buffer, uint64_t buf_size){
+        ssize_t totalBytes = 0;
+        ssize_t write_size  = buf_size;
+        char* writeBuffer;
+        ssize_t numBytes;
+        struct timespec ts1,ts2;
+        //uint64_t write_start, write_end, write_all;
+        while(write_size > 0){
+            writeBuffer = (char*) (buffer + totalBytes);
+            //write_start = getNanoSecond(ts1);
+            numBytes = write(fd, writeBuffer, write_size);
+            //rwrite_end = getNanoSecond(ts2);
 
-    void writeTuple(const KVTuple& kvr, int index) {
-        /*std::cout<< "w:" << kvr.getTag() <<":";
-        for(uint32_t j = 0; j < 10; j++){
-            uint8_t k = (uint8_t) kvr.getKey(j);
-            std::cout << +k << " ";
-        }
-        std::cout << "\n";*/
-        char* bufptr = kvr.getBuffer();
-        FILE* fp = outFileList[index];
-        std::fwrite(bufptr, sizeof(char), record_size, fp);
-        // you need to close the ifstream/ofstream/fstream after the writers are destructed
-    }
-
-    void closeInputFiles(){
-        if(input_file_num > 0){
-            for(int i=0; i < input_file_num; i++){
-                std::fclose(inFileList[i]);
-                inFileList[i] = nullptr;
+            if(numBytes > 0){
+                totalBytes = totalBytes + numBytes;
+                write_size = write_size - numBytes;
+                //std::cout << "ws:" << write_size << "\n";
+                //write_all = write_all + (write_end - write_start);              
             }
-            inFileList.clear();
-        } 
-    }
-
-    void closeOutputFiles(){
-        if(output_file_num > 0){
-            for(int i=0; i < output_file_num; i++){
-                std::fclose(outFileList[i]);
-                outFileList[i] = nullptr;
+            else{
+                printf("write() error %d: %s", errno, strerror(errno)); 
+                std::cout << "nb:" << numBytes << "\n";        
             }
-            outFileList.clear();
+            
         }
-    }
-
-    int getInputFileNum() const{
-        return input_file_num;
-    }
-
-    int getOutputFileNum() const{
-        return output_file_num;
-    }
-
-    size_t getRecordSize() const {
-        return record_size;
-    }
-
-    size_t genReadIters(int index){
-        //std::cout <<"filename:"<< inputFilenames[index] << "\n";
-        struct stat stat_buf;
-        int rc = stat(inputFilenames[index].c_str(), &stat_buf);
-        if(rc == 0){            
-            file_size= (size_t) stat_buf.st_size;
-            read_iter = file_size/record_size;
-            return read_iter;
+        if(totalBytes > 0){
+            //std::cout << "w:" << totalBytes << "\n";
+            //_logger->info("{0:d}", write_all);
+            return totalBytes;
         }
         else{
             return 0;
@@ -171,7 +99,36 @@ public:
     }
 
 
-private:
+    // wrap up the C read syscall: ssize_t read(int fd, void *buf, size_t count);
+    inline ssize_t readFile(int fd, char* buffer, uint64_t buf_size){
+        ssize_t totalBytes = 0;
+        ssize_t read_size  = buf_size;
+        char* readBuffer;
+        ssize_t numBytes;
+        struct timespec ts1,ts2;
+        //uint64_t read_start, read_end, read_all;
+        while(read_size > 0){
+            readBuffer = (char*) (buffer + totalBytes);
+            //read_start = getNanoSecond(ts1);
+            numBytes = read(fd, readBuffer, read_size);
+            //read_end = getNanoSecond(ts2);
+
+            if(numBytes > 0){
+                totalBytes = totalBytes + numBytes;
+                read_size = read_size - numBytes;
+                //read_all = read_all + (read_end - read_start);              
+            }    
+        }
+        if(totalBytes > 0){
+            //_logger->info("{0:d}", read_all);
+            //std::cout << "r:" << totalBytes << "\n";
+            return totalBytes;
+        }
+        else{
+            return 0;
+        }
+    }
+
     //std::string inputFilename;
     std::string filepath = "/oasis/scratch/comet/stingw/temp_project/";
     std::string outputExtension = ".sort";
@@ -179,13 +136,20 @@ private:
     std::string outputPrefix;
     std::string inputPrefix;
     std::vector<std::string> inputFilenames;
-    std::vector<std::FILE*> inFileList;
-    std::vector<std::FILE*> outFileList;
+    //std::vector<std::FILE*> inFileList;
+    std::vector<int> inFileList;
+    //std::vector<std::FILE*> outFileList;
+    std::vector<int> outFileList;
     //std::ifstream inputStream;
     //std::ofstream outputStream;
+    char* fileio_buffer;
     int input_file_num;
     int output_file_num;
-    size_t record_size=100;
+    uint32_t header_size=10;
+    uint32_t key_size=10;
+    uint32_t val_size=90;
+    uint32_t record_size=100;
+    uint32_t bulk_size=100;
     uint64_t record_count;
     size_t file_size;
     size_t read_iter;

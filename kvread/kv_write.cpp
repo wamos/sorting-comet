@@ -1,18 +1,18 @@
 #include <thread>
 #include <iostream>
 #include <fstream>
-#include <tuple>
 #include <utility>
 #include "json.hpp"
 #include "utility.h"
 /*---------------*/
 #include "ConcurrentQueue.h"
+#include "StageTracker.h"
+#include "Socket.h"
 #include "KVTuple.h"
 #include "KVReader.h"
 #include "KVWriter.h"
 #include "KVSink.h"
-#include "Socket.h"
-#include "FileGuider.h"
+#include "KVGuide.h"
 #include "spdlog/spdlog.h"
 
 #define SPDLOG_TRACE_ON
@@ -20,21 +20,35 @@
 
 using json = nlohmann::json;
 
+inline uint64_t getNanoSecond(struct timespec tp){
+        clock_gettime(CLOCK_MONOTONIC, &tp);
+        return (1000000000) * (uint64_t)tp.tv_sec + tp.tv_nsec;
+}
+
+
 int main(int argc, char* argv[]) {
 
-	//std::string inputFilePrefix[4] = {"test0_100mb", "test1_100mb", "test2_100mb", "test3_100mb"};
-	//std::string inputFilePrefix[4] = {"test100", "test100_0", "test100_1", "test100_2"};
-	//std::string inputFilePrefix[4] = {"100mb", "100mb_0", "100mb_1", "100mb_2"};
-	//std::string outputFilePrefix("kv");
-	size_t record_size= 0;
+	//struct timespec ts1,ts2;
+	//uint64_t all_start, all_end;
+	//all_start = getNanoSecond(ts1);
+	uint32_t record_size= 0;
+	uint32_t bulk_size=0;
+	uint32_t header_size=0;
+	uint32_t key_size=0;
+	uint32_t value_size=0;
 	int output_files_per_thread=0;
 	int input_files_per_thread=0;
 	int num_read_thread=0;
+	int num_sink_thread=0;
+	int num_file_guider=0;
 	int num_write_thread=0;
 	int node_status=0;
+	uint64_t queue_size=0;
 	std::string filepath; //= "/oasis/scratch/comet/stingw/temp_project/";
+	std::string datapath;
 	std::string shared_config;
 	std::string host_config;
+	std::string slurm_topology_addr;
 
 	utility::parse_cli_arguments(argc, argv,
 		utility::cli_argument_pack()
@@ -42,10 +56,15 @@ int main(int argc, char* argv[]) {
         //.arg(sort_type, "-s", "\t type of sort")
 		//.arg(machine_name, "-m", "the machine name")
         .arg(node_status, "-n", "the node is either sender or receiver")
-        .arg(shared_config, "-scf", "shared config file name")
-        .arg(host_config, "-hcf", "per host config file name")
+        .arg(shared_config, "-sc", "shared config file name")
+        .arg(host_config, "-hc", "per host config file name")
+        .arg(slurm_topology_addr, "-host", "hostname from env var")
         //.positional_arg(inputFileName, "input_filename", "input file name")
         );
+	std::string::size_type n;
+	n = slurm_topology_addr.rfind(".");
+	std::string hostname =slurm_topology_addr.substr(n+1);
+	std::cout<<hostname<<"\n";
 
 	json shared_json, host_json;
 	shared_config = "../config/"+shared_config;
@@ -64,10 +83,40 @@ int main(int argc, char* argv[]) {
 			record_size = (size_t) std::stoul(rs, &sz);
 			std::cout << record_size << "\n";
 		}
+		else if (it.key() == "bulk_size"){
+			std::string bs = it.value();
+			bulk_size = (size_t) std::stoul(bs, &sz);
+			std::cout << bulk_size << "\n";
+		}
+		else if (it.key() == "key_size"){
+			std::string ksz = it.value();
+			key_size = (size_t) std::stoul(ksz, &sz);
+			std::cout << key_size << "\n";
+		}
+		else if (it.key() == "value_size"){
+			std::string vsz = it.value();
+			value_size = (size_t) std::stoul(vsz, &sz);
+			std::cout << value_size << "\n";
+		}
+		else if (it.key() == "header_size"){
+			std::string hsz = it.value();
+			header_size = (size_t) std::stoul(hsz, &sz);
+			std::cout << header_size << "\n";
+		}
 		else if (it.key() == "read_threads"){
 			std::string rt = it.value();
 			num_read_thread = std::stoi(rt, &sz);
 			std::cout << num_read_thread << "\n";
+		}
+		else if (it.key() == "sink_threads"){
+			std::string sinkt = it.value();
+			num_sink_thread = std::stoi(sinkt, &sz);
+			std::cout << num_sink_thread << "\n";
+		}
+		else if (it.key() == "file_guiders"){
+			std::string fg = it.value();
+			num_file_guider = std::stoi(fg, &sz);
+			std::cout << num_file_guider << "\n";
 		}
 		else if (it.key() == "write_threads"){
 			std::string wt = it.value();
@@ -87,6 +136,10 @@ int main(int argc, char* argv[]) {
 		else if(it.key()== "filepath"){
 			filepath = it.value();
 			std::cout << filepath << "\n";
+		}
+		else if(it.key()== "datapath"){
+			datapath = it.value();
+			std::cout << datapath << "\n";
 		}
 		else{
 			std::cout << it.value() << ",";
@@ -133,97 +186,113 @@ int main(int argc, char* argv[]) {
 	std::cout << "The Time is:"+time_str <<"\n";
 
 	auto console = spdlog::stdout_color_mt("console");
-	spdlog::set_pattern("[%H:%M:%S %F] [thread %t] %v");
+	//spdlog::set_pattern("[%H:%M:%S %F] [thread %t] %v");
+	//spdlog::set_pattern("[tid %t] %v");
+	//spdlog::set_pattern("%t %v");
+	spdlog::set_pattern("%v");
 	console->info("spdlog console logger starts");
-	auto ar_logger = spdlog::basic_logger_mt("kvreader_logger", filepath+"read_"+time_str+"_kv_"+std::to_string(bytes)+".test");
-	ar_logger->info("reader logger starts");
+	//auto ar_logger = spdlog::basic_logger_mt("kvreader_logger", filepath+"read_"+time_str+"_kv_"+std::to_string(bytes)+".test");
+	auto r_logger = spdlog::basic_logger_mt("kvreader_logger", filepath+"read_"+time_str+"_th_"+std::to_string(num_read_thread)+".test");
+	auto queue_logger = spdlog::basic_logger_mt("queue_logger", filepath+"queue_"+time_str+"_th_"+std::to_string(num_read_thread)+".test");
+	auto g_logger = spdlog::basic_logger_mt("guide_logger", filepath+"guide_"+time_str+"_th_"+std::to_string(num_read_thread)+".test");
+
+	if(num_sink_thread>0)
+		auto sink_logger = spdlog::basic_logger_mt("sink_logger", filepath+"sink_"+time_str+"_th_"+std::to_string(num_sink_thread)+".test");
+	if(num_write_thread>0)
+		auto w_logger = spdlog::basic_logger_mt("kvwriter_logger", filepath+"write_"+time_str+"_th_"+std::to_string(num_write_thread)+".test");
+	//ar_logger->info("switch.switch.node:"+slurm_topology_addr);
+	//ar_logger->info("reader_logger_starts");
+	//queue_logger->info("queue_logger_starts");
+	//sink_logger->info("sink_logger_starts");
 	//auto aw_logger = spdlog::basic_logger_mt("async_writer_logger", "/tmp/write_"+time_str+"_buffer_"+std::to_string(Kbytes)+".test");
 	//aw_logger->info("async_writer logger starts");
 	//auto sock_logger = spdlog::basic_logger_mt("socket_logger", "/tmp/sock_"+time_str+"_buffer_"+std::to_string(Kbytes)+".test");
 	//sock_logger->info("socket logger starts");
 	
+	//Test reading threads with a single sink
+	queue_size = 64; //48000000
+	std::shared_ptr<ConcurrentQueue> GuideQueue( new ConcurrentQueue(10,queue_size) );
+	std::shared_ptr<StageTracker> tracker( new StageTracker(num_read_thread, input_files_per_thread));
 
-	std::shared_ptr<ConcurrentQueue> GuideQueue( new ConcurrentQueue(0,400) );
-	std::cout << "cq is created" << "\n";
+	KVGuide file_guider(0, GuideQueue, num_read_thread, tracker);
+    file_guider.genSplitPoints(num_write_thread);
+    //file_guider.genSplitPoints(num_sink_thread);
 
-	// Test KVReader-Q-KVWriter -> PASS
-	/*std::unique_ptr<Socket> r_sock (nullptr);
-	std::unique_ptr<KVFileIO> infile_io (new KVFileIO(record_size, filepath));
-	infile_io->openInputFiles(input_prefix_list[0], input_files_per_thread);
-	KVReader reader(std::move(infile_io), GuideQueue, std::move(r_sock), node_status);
-
-	node_status=2;
-	std::unique_ptr<Socket> w_sock (nullptr);
-	std::unique_ptr<KVFileIO> outfile_io (new KVFileIO(record_size, filepath));
-	outfile_io->openOutputFiles(output_prefix_list[0], output_files_per_thread);
-	KVWriter writer(std::move(outfile_io), GuideQueue, std::move(w_sock), node_status);
-	writer.setKeyIndex(0);
-
-	reader.submitKVRead();
-	writer.startWriterThread();*/
-
-	KVGuide file_guider(GuideQueue, num_read_thread);
-	//file_guider.genSplitPoints(num_write_thread*output_files_per_thread);
-	file_guider.genSplitPoints(2);
-
+	uint32_t total_iters=0;
 	std::vector<KVReader> reader_list;
-	//std::vector<KVWriter> writer_list;
+	std::vector<KVWriter> writer_list;
+	std::vector<KVSink> sink_list;
 
 	for(int i=0;i < num_read_thread ;i++){
 		std::cout << "\n";
 		std::unique_ptr<Socket> r_sock (nullptr);
     	std::cout << "reader_" <<i<<":"<<"\n";
 
-		std::unique_ptr<KVFileIO> file_io (new KVFileIO(record_size, filepath));
+		std::unique_ptr<KVFileIO> file_io (new KVFileIO(header_size, key_size, value_size, bulk_size, datapath));
 		file_io->openInputFiles(input_prefix_list[i], input_files_per_thread);
 
-		KVReader reader(std::move(file_io), GuideQueue, std::move(r_sock), node_status);
+		KVReader reader(i, std::move(file_io), GuideQueue, tracker, std::move(r_sock), node_status);
 		std::cout << "reader push_back\n";
 		reader_list.push_back(std::move(reader));
 	}
 
-	std::shared_ptr<ConcurrentQueue> SQueue0( new ConcurrentQueue(0,4096) );
-	std::shared_ptr<ConcurrentQueue> SQueue1( new ConcurrentQueue(0,4096) );
-	file_guider.addWriteQueue(SQueue0);
-	file_guider.addWriteQueue(SQueue1);
+	for(int i=0;i < num_sink_thread;i++){
+		std::cout << "sink_" <<i<<":"<<"\n";
+		std::shared_ptr<ConcurrentQueue> SQueue( new ConcurrentQueue(i,queue_size) );
+		file_guider.addWriteQueue(SQueue);
+		KVSink sink(i, SQueue, tracker, num_file_guider);
+		std::cout << "sink push_back\n";
+		sink_list.push_back(std::move(sink));
+	}
 
-	KVSink sinker0(SQueue0, 1, 0);
-	KVSink sinker1(SQueue1, 1, 1); 
+	for(int i=0; i < num_write_thread; i++){
+		std::unique_ptr<Socket> w_sock (nullptr);
+
+		std::cout << "write_" <<i<<":"<<"\n";
+		std::shared_ptr<ConcurrentQueue> SQueue( new ConcurrentQueue(i,queue_size) );
+		file_guider.addWriteQueue(SQueue);
+
+		std::unique_ptr<KVFileIO> file_io (new KVFileIO(header_size, key_size, value_size, bulk_size, datapath));
+		file_io->openOutputFiles(output_prefix_list[i], output_files_per_thread);
+
+		KVWriter writer(i, num_file_guider, std::move(file_io), SQueue, tracker, std::move(w_sock), node_status);
+		writer.setKeyIndex(i);
+		std::cout << "reader push_back\n";
+		writer_list.push_back(std::move(writer));
+	}
 
 	for(int i=0;i < num_read_thread;i++){
 		reader_list[i].submitKVRead();
 	}
 
 	file_guider.startGuide();
-	sinker0.startSink();
-	sinker1.startSink();
 
-	/*node_status = 2;
-	for(uint32_t i=0;i < num_write_thread ;i++){
-		std::cout << "\n";
-		std::unique_ptr<Socket> w_sock (nullptr);
-    	std::cout << "reader_" <<i<<":"<<"\n";
-    	// Guider needs to have pointrt to write queues
-    	std::shared_ptr<ConcurrentQueue> WriteQueue( new ConcurrentQueue(0,4096) );
-    	file_guider.addWriteQueue(WriteQueue);
-
-		std::unique_ptr<KVFileIO> file_io (new KVFileIO(record_size, filepath));
-		file_io->openOutputFiles(output_prefix_list[i], output_files_per_thread);
-		//KVWriter writer(std::move(file_io), WriteQueue, std::move(w_sock), node_status);
-		//writer.setKeyIndex(i);
-		std::cout << "writer push_back\n";
-		//writer_list.push_back(std::move(writer));	
-	}*/
-
-	/*for(int i=0;i < num_read_thread;i++){
-		reader_list[i].submitKVRead();
-	}*/
-
-	/*for(int i=0;i < num_write_thread; i++){
+	for(int i=0;i < num_sink_thread;i++){
+		sink_list[i].startMultiSink();
+	}
+	
+	for(int i=0; i < num_write_thread; i++){
 		writer_list[i].startWriterThread();
-	}*/
+	}
 
-
-	/*console->info("spdlog console logger ends");*/
 	return 0;
+	//std::shared_ptr<ConcurrentQueue> SQueue1( new ConcurrentQueue(2,queue_size) );
+    //std::shared_ptr<ConcurrentQueue> SQueue2( new ConcurrentQueue(3,queue_size) );
+    //std::shared_ptr<ConcurrentQueue> SQueue3( new ConcurrentQueue(4,queue_size) );
+
+    //file_guider.addWriteQueue(SQueue0);
+    //file_guider.addWriteQueue(SQueue1);
+    //file_guider.addWriteQueue(SQueue2);
+    //file_guider.addWriteQueue(SQueue3);
+
+	//KVSink sink0(0, SQueue0, tracker, num_file_guider);
+	//KVSink sink1(1, SQueue1, tracker, num_file_guider);
+	//KVSink sink2(2, SQueue2, filecount, num_file_guider);
+	//KVSink sink3(3, SQueue3, filecount, num_file_guider);
+	//sink0.startSink();
+	//sink0.startMultiSink();
+	//sink1.startMultiSink();
+	//sink2.startMultiSink();
+	//sink3.startMultiSink();
+	//sink_list.clear();
 }
